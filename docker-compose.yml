@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  db_mysql:
+    image: mysql:8.0
+    container_name: pulse_mysql
+    restart: always
+    env_file: .env
+    environment:
+      MYSQL_DATABASE: ${DATABASE_NAME}
+      MYSQL_ROOT_PASSWORD: ${DATABASE_PASS}
+    ports:
+      - "${DATABASE_PORT}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db_mongo:
+    image: mongo:latest
+    container_name: pulse_mongo
+    restart: always
+    env_file: .env
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE}
+    ports:
+      - "${MONGO_PORT}:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: pulse_mq
+    restart: always
+    env_file: .env
+    ports:
+      - "${MQ_PORT}:5672"
+      - "15672:15672" # UI
+
+  pulse_django:
+    build: ./pulse
+    container_name: pulse_django
+    restart: always
+    env_file: .env
+    volumes:
+      - ./pulse:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db_mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  pulse_worker:
+    build: ./pulse
+    container_name: pulse_worker
+    restart: always
+    env_file: .env
+    volumes:
+      - ./pulse:/app
+    command: celery -A pulse_api worker --loglevel=info -Q ${MQ_QUEUE_SCRAPE}
+    depends_on:
+      - pulse_django
+      - db_mongo
+
+  pulse_beat:
+    build: ./pulse
+    container_name: pulse_beat
+    restart: always
+    env_file: .env
+    volumes:
+      - ./pulse:/app
+    command: celery -A pulse_api beat --loglevel=info
+    depends_on:
+      - pulse_django
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: pulse_nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ${NGINX_CONF_PATH}:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - pulse_django
+
+volumes:
+  mysql_data:
+  mongo_data:
