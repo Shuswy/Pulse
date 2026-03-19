@@ -64,7 +64,7 @@ services:
     env_file: .env
     volumes:
       - ./pulse:/app
-    command: celery -A pulse_api worker --loglevel=info -Q ${MQ_QUEUE_SCRAPE}
+    command: celery -A pulse worker --loglevel=info -Q ${MQ_QUEUE_SCRAPE}
     depends_on:
       - pulse_django
       - db_mongo
@@ -76,7 +76,7 @@ services:
     env_file: .env
     volumes:
       - ./pulse:/app
-    command: celery -A pulse_api beat --loglevel=info
+    command: celery -A pulse beat --loglevel=info
     depends_on:
       - pulse_django
 
